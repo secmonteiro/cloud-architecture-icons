@@ -2,6 +2,8 @@
 param(
     [string]$SourceRoot,
     [string]$OutputPath,
+    [string]$CategoryOutputDirectory,
+    [switch]$SkipCategoryLibraries,
     [int]$MaxIconSize = 64
 )
 
@@ -16,6 +18,12 @@ $repoRoot = (Resolve-Path $SourceRoot).Path.TrimEnd('\', '/')
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $repoRoot 'cloud-architecture-icons.xml'
+}
+
+if ([string]::IsNullOrWhiteSpace($CategoryOutputDirectory)) {
+    $CategoryOutputDirectory = Join-Path $repoRoot 'Azure\XML'
+} elseif (-not [IO.Path]::IsPathRooted($CategoryOutputDirectory)) {
+    $CategoryOutputDirectory = Join-Path $repoRoot $CategoryOutputDirectory
 }
 
 function Get-RelativePath {
@@ -150,6 +158,51 @@ function Get-IconCategory {
     return ($directories | ForEach-Object { Format-CategoryName $_ }) -join ' / '
 }
 
+function Get-SafeFileName {
+    param([string]$Name)
+
+    $invalidCharacters = [IO.Path]::GetInvalidFileNameChars()
+    $safeCharacters = $Name.ToCharArray() | ForEach-Object {
+        if ($invalidCharacters -contains $_) {
+            '-'
+        } else {
+            $_
+        }
+    }
+
+    return ((-join $safeCharacters) -replace '\s+', ' ').Trim()
+}
+
+function Get-LibraryFileName {
+    param([string]$Category)
+
+    $azurePrefix = 'Azure Public Service Icons / '
+
+    if ($Category.StartsWith($azurePrefix, [StringComparison]::Ordinal)) {
+        return Get-SafeFileName ("Azure - " + $Category.Substring($azurePrefix.Length) + '.xml')
+    }
+
+    return Get-SafeFileName (($Category -replace ' / ', ' - ') + '.xml')
+}
+
+function ConvertTo-DrawioLibraryXml {
+    param([object[]]$Items)
+
+    $libraryItems = @($Items | Sort-Object title | ForEach-Object {
+        [ordered]@{
+            data = $_.data
+            w = $_.w
+            h = $_.h
+            aspect = $_.aspect
+            title = $_.title
+        }
+    })
+
+    $json = ConvertTo-Json -InputObject $libraryItems -Depth 5 -Compress
+    $escapedJson = [Security.SecurityElement]::Escape($json)
+    return "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<mxlibrary>$escapedJson</mxlibrary>`n"
+}
+
 function Get-NumberFromText {
     param([string]$Value)
 
@@ -228,7 +281,8 @@ $entries = foreach ($file in $svgFiles) {
     $category = Get-IconCategory $relativePath
     $name = Format-IconName $file.Name
 
-    [ordered]@{
+    [pscustomobject][ordered]@{
+        Category = $category
         data = 'data:image/svg+xml;base64,' + [Convert]::ToBase64String($bytes)
         w = $size.w
         h = $size.h
@@ -237,11 +291,24 @@ $entries = foreach ($file in $svgFiles) {
     }
 }
 
-$json = $entries | ConvertTo-Json -Depth 5 -Compress
-$escapedJson = [Security.SecurityElement]::Escape($json)
-$libraryXml = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<mxlibrary>$escapedJson</mxlibrary>`n"
-
 $utf8NoBom = New-Object Text.UTF8Encoding($false)
+$libraryXml = ConvertTo-DrawioLibraryXml $entries
 [IO.File]::WriteAllText($OutputPath, $libraryXml, $utf8NoBom)
 
 Write-Host "Generated $OutputPath with $($entries.Count) icons."
+
+if (-not $SkipCategoryLibraries) {
+    New-Item -ItemType Directory -Force -Path $CategoryOutputDirectory | Out-Null
+
+    $categoryCount = 0
+
+    foreach ($group in ($entries | Group-Object Category | Sort-Object Name)) {
+        $categoryOutputPath = Join-Path $CategoryOutputDirectory (Get-LibraryFileName $group.Name)
+        $categoryXml = ConvertTo-DrawioLibraryXml $group.Group
+        [IO.File]::WriteAllText($categoryOutputPath, $categoryXml, $utf8NoBom)
+        Write-Host "Generated $categoryOutputPath with $($group.Count) icons."
+        $categoryCount++
+    }
+
+    Write-Host "Generated $categoryCount categorized libraries in $CategoryOutputDirectory."
+}
