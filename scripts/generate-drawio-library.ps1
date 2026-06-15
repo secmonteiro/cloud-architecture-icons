@@ -120,7 +120,14 @@ function Get-IconCategory {
     param([string]$RelativePath)
 
     $parts = $RelativePath -split '[\\/]'
-    $iconsIndex = [Array]::IndexOf($parts, 'Icons')
+    $iconsIndex = -1
+
+    for ($index = 1; $index -lt $parts.Count; $index++) {
+        if ($parts[$index] -eq 'Icons' -and $parts[$index - 1] -eq 'Azure_Public_Service_Icons') {
+            $iconsIndex = $index
+            break
+        }
+    }
 
     if ($iconsIndex -ge 0 -and ($iconsIndex + 1) -lt $parts.Count) {
         return 'Azure Public Service Icons / ' + (Format-CategoryName $parts[$iconsIndex + 1])
@@ -287,7 +294,7 @@ $entries = foreach ($file in $svgFiles) {
         w = $size.w
         h = $size.h
         aspect = 'fixed'
-        title = "$category / $name"
+        title = $name
     }
 }
 
@@ -299,6 +306,9 @@ Write-Host "Generated $OutputPath with $($entries.Count) icons."
 
 if (-not $SkipCategoryLibraries) {
     New-Item -ItemType Directory -Force -Path $CategoryOutputDirectory | Out-Null
+
+    Get-ChildItem -LiteralPath $CategoryOutputDirectory -File -Filter '*.xml' |
+        Remove-Item -Force
 
     $categoryCount = 0
 
