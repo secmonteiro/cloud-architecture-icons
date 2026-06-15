@@ -52,3 +52,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-drawio-li
 
 The script scans all `.svg` files, keeps the original SVG files untouched, and writes a fresh `cloud-architecture-icons.xml`.
 It also writes categorized XML libraries to `Azure/XML`.
+
+## Import in Lucidchart
+
+Use the generated Lucidchart shape library package:
+
+```text
+Azure/Lucidchart/cloud-architecture-icons.lcsl
+```
+
+In Lucidchart:
+
+1. Open a document.
+2. Click `More shapes` at the bottom of the Shapes panel.
+3. Click `Import Shapes`.
+4. Select `Azure/Lucidchart/cloud-architecture-icons.lcsl`.
+
+The `.lcsl` package is a ZIP-style Lucid shape library with:
+
+```text
+library.manifest
+images/*.svg
+shapes/*.shape
+```
+
+Each icon is listed with a clean searchable name based on the original SVG filename.
+
+To regenerate the Lucidchart package:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-lucidchart-library.ps1
+```
